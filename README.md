@@ -40,6 +40,7 @@ cargo run
 ```
 
 ## Usage 
+To modify the contract, edit the code variable in the main function in src/main.rs:
 
 ```code
 fn main() {
