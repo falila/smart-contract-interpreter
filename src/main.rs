@@ -1,7 +1,7 @@
 use regex::Regex;
 use std::collections::HashMap;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum Statement {
     VarAssign { var: String, value: i64 },
     VarUpdate { var: String, value: i64 },
@@ -10,6 +10,12 @@ enum Statement {
         value: i64,
         true_branch: Vec<Statement>,
         false_branch: Vec<Statement>,
+    },
+    WhileLoop {
+        var: String,
+        op: String,
+        value: i64,
+        body: Vec<Statement>,
     },
     FunctionCall { name: String, args: Vec<i64> },
 }
@@ -32,6 +38,8 @@ impl Interpreter {
         let re_if = Regex::new(r"^if (\w+) == (-?\d+) \{$").unwrap();
         let re_else = Regex::new(r"^\} else \{$").unwrap();
         let re_endif = Regex::new(r"^\}$").unwrap();
+        let re_while = Regex::new(r"^while (\w+) (==|!=|<|>|<=|>=) (-?\d+) \{$").unwrap();
+        let re_endwhile = Regex::new(r"^\}$").unwrap();
         let re_function_call = Regex::new(r"^(\w+)\(([^)]*)\);$").unwrap();
 
         let lines: Vec<&str> = code.lines().collect();
@@ -73,6 +81,19 @@ impl Interpreter {
                     true_branch,
                     false_branch,
                 });
+            } else if let Some(caps) = re_while.captures(line) {
+                let var = caps[1].to_string();
+                let op = caps[2].to_string();
+                let value = caps[3].parse::<i64>().unwrap();
+                let mut body = Vec::new();
+
+                i += 1;
+                while i < lines.len() && !re_endwhile.is_match(lines[i].trim()) {
+                    body.push(self.parse_statement(lines[i].trim()));
+                    i += 1;
+                }
+
+                statements.push(Statement::WhileLoop { var, op, value, body });
             } else if let Some(caps) = re_function_call.captures(line) {
                 let name = caps[1].to_string();
                 let args: Vec<i64> = caps[2]
@@ -138,6 +159,11 @@ impl Interpreter {
                         }
                     }
                 }
+                Statement::WhileLoop { var, op, value, body } => {
+                    while self.evaluate_condition(&var, &op, value) {
+                        self.evaluate(body.clone());
+                    }
+                }
                 Statement::FunctionCall { name, args } => match name.as_str() {
                     "print" => {
                         for arg in args {
@@ -148,6 +174,22 @@ impl Interpreter {
                     _ => panic!("Unknown function: {}", name),
                 },
             }
+        }
+    }
+
+    fn evaluate_condition(&self, var: &String, op: &String, value: i64) -> bool {
+        if let Some(var_value) = self.variables.get(var) {
+            match op.as_str() {
+                "==" => *var_value == value,
+                "!=" => *var_value != value,
+                "<" => *var_value < value,
+                ">" => *var_value > value,
+                "<=" => *var_value <= value,
+                ">=" => *var_value >= value,
+                _ => false,
+            }
+        } else {
+            false
         }
     }
 }
@@ -163,6 +205,19 @@ fn main() {
             print(1, 2, 3);
         } else {
             print(4, 5, 6);
+        }
+    "#;
+
+    let statements = interpreter.parse(code);
+    interpreter.evaluate(statements);
+
+    let mut interpreter = Interpreter::new();
+
+    let code = r#"
+        let x = 0;
+        while x < 5 {
+            x = x + 1;
+            print(x);
         }
     "#;
 
